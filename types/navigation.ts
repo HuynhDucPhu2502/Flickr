@@ -8,3 +8,9 @@ export type TabParamList = {
   Home: undefined;
   Chat: undefined;
 };
+
+export type ProfileStackParamList = {
+  ProfileHome: undefined;
+  ProfileEdit: undefined;
+  Subscription: undefined;
+};

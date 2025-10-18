@@ -1,13 +1,26 @@
-import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { Text, View } from "react-native";
-import { TabParamList } from "../../../types/navigation";
+import { StyleSheet, Text, View } from "react-native";
+import React from "react";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import SwipeFeedScreen from "./swipe-feed-screen";
+import CandidateDetailsScreen from "./candidate-details-screen";
 
-type Props = BottomTabScreenProps<TabParamList, "Home">;
+export type HomeStackParamList = {
+  SwipeFeed: undefined;
+  CandidateDetails: { uid: string };
+};
 
-export const HomeScreen = ({}: Props) => {
+const Stack = createNativeStackNavigator<HomeStackParamList>();
+
+const HomeScreen = () => {
   return (
-    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <Text>Home</Text>
-    </View>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="SwipeFeed" component={SwipeFeedScreen} />
+      <Stack.Screen
+        name="CandidateDetails"
+        component={CandidateDetailsScreen}
+      />
+    </Stack.Navigator>
   );
 };
+
+export default HomeScreen;

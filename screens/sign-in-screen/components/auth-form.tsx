@@ -3,37 +3,55 @@ import { View, StyleSheet, TextInput } from "react-native";
 import { Text, Button } from "react-native-paper";
 
 interface AuthFormProps {
+  username: string;
   email: string;
   password: string;
   isRegister: boolean;
-  setEmail: (val: string) => void;
-  setPassword: (val: string) => void;
+  setUsername: (v: string) => void;
+  setEmail: (v: string) => void;
+  setPassword: (v: string) => void;
   onSubmit: () => void;
   onToggleMode: () => void;
+  loading?: boolean;
 }
 
 export const AuthForm = ({
+  username,
   email,
   password,
   isRegister,
+  setUsername,
   setEmail,
   setPassword,
   onSubmit,
   onToggleMode,
+  loading,
 }: AuthFormProps) => {
   return (
     <View style={styles.form}>
-      {/* 🔹 Title động: hiển thị “Đăng nhập” hoặc “Đăng ký” */}
       <Text style={styles.title}>{isRegister ? "Đăng ký" : "Đăng nhập"}</Text>
+
+      {isRegister && (
+        <TextInput
+          style={styles.input}
+          placeholder="Username (không dấu, không khoảng trắng)"
+          placeholderTextColor="#ddd"
+          autoCapitalize="none"
+          value={username}
+          onChangeText={setUsername}
+          returnKeyType="next"
+        />
+      )}
 
       <TextInput
         style={styles.input}
-        placeholder="Email"
+        placeholder="Tài khoản (Email)"
         placeholderTextColor="#ddd"
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
+        returnKeyType="next"
       />
 
       <TextInput
@@ -43,6 +61,8 @@ export const AuthForm = ({
         secureTextEntry
         value={password}
         onChangeText={setPassword}
+        returnKeyType="done"
+        onSubmitEditing={onSubmit}
       />
 
       <Button
@@ -52,6 +72,8 @@ export const AuthForm = ({
         textColor="#fff"
         style={styles.btn}
         labelStyle={styles.btnText}
+        disabled={loading}
+        loading={!!loading}
       >
         {isRegister ? "Đăng ký" : "Đăng nhập"}
       </Button>
@@ -66,11 +88,7 @@ export const AuthForm = ({
 };
 
 const styles = StyleSheet.create({
-  form: {
-    width: "100%",
-    maxWidth: 360,
-    gap: 16,
-  },
+  form: { width: "100%", maxWidth: 360, gap: 16 },
   title: {
     fontSize: 22,
     fontWeight: "700",
@@ -86,16 +104,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     fontSize: 16,
   },
-  btn: {
-    borderRadius: 12,
-    height: 52,
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  btnText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  btn: { borderRadius: 12, height: 52, justifyContent: "center", marginTop: 4 },
+  btnText: { fontSize: 16, fontWeight: "600" },
   switchText: {
     color: "#fff",
     textAlign: "center",

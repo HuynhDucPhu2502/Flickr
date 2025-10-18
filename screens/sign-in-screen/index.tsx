@@ -1,52 +1,58 @@
+// screens/sign-in-screen.tsx
 import React, { useState } from "react";
 import {
   View,
   StyleSheet,
-  TextInput,
   TouchableWithoutFeedback,
   Keyboard,
+  Alert,
 } from "react-native";
-import { Text, Button } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../types/navigation";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
-
-import { auth } from "../../FirebaseConfig";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-} from "firebase/auth";
 import { Header } from "./components/header";
 import { Footer } from "./components/footer";
 import { AuthForm } from "./components/auth-form";
+import { useAuth } from "../../contexts/auth";
 
 type Props = NativeStackScreenProps<RootStackParamList, "SignIn">;
 
-export const SignInScreen = ({ navigation }: Props) => {
+export const SignInScreen = (_: Props) => {
+  const { login, register } = useAuth();
+  const [isRegister, setIsRegister] = useState(false);
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isRegister, setIsRegister] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleAuth = async () => {
     try {
+      setSubmitting(true);
       if (isRegister) {
-        await createUserWithEmailAndPassword(auth, email, password);
-        alert("🎉 Đăng ký thành công!");
+        const uname = username.trim().toLowerCase();
+        if (!/^[a-z0-9._-]{3,20}$/.test(uname)) {
+          throw new Error("Username 3–20 ký tự, a-z 0-9 . _ -");
+        }
+        await register(uname, email.trim().toLowerCase(), password);
+        Alert.alert("Thành công", "🎉 Đăng ký thành công!");
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
-        alert("✅ Đăng nhập thành công!");
-        navigation.replace("MainTabs");
+        await login(email.trim().toLowerCase(), password);
+        Alert.alert("Thành công", "✅ Đăng nhập thành công!");
       }
-    } catch (error: any) {
-      alert(
-        (isRegister ? "Đăng ký" : "Đăng nhập") + " thất bại: " + error.message
+    } catch (e: any) {
+      Alert.alert(
+        isRegister ? "Đăng ký thất bại" : "Đăng nhập thất bại",
+        e?.message ?? String(e)
       );
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const toggleMode = () => {
-    setIsRegister((prev) => !prev);
+    setIsRegister((v) => !v);
+    setUsername("");
     setEmail("");
     setPassword("");
     Keyboard.dismiss();
@@ -62,19 +68,22 @@ export const SignInScreen = ({ navigation }: Props) => {
         style={{ flex: 1, width: "100%" }}
         contentContainerStyle={styles.scrollContainer}
         extraScrollHeight={60}
-        enableOnAndroid={true}
+        enableOnAndroid
         keyboardShouldPersistTaps="handled"
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.formWrapper}>
             <AuthForm
+              username={username}
               email={email}
               password={password}
               isRegister={isRegister}
+              setUsername={setUsername}
               setEmail={setEmail}
               setPassword={setPassword}
               onSubmit={handleAuth}
               onToggleMode={toggleMode}
+              loading={submitting}
             />
           </View>
         </TouchableWithoutFeedback>
@@ -88,25 +97,14 @@ export const SignInScreen = ({ navigation }: Props) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerWrapper: {
-    alignItems: "center",
-    marginTop: 50,
-  },
+  container: { flex: 1 },
+  headerWrapper: { alignItems: "center", marginTop: 50 },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 20,
   },
-  formWrapper: {
-    width: "100%",
-    maxWidth: 360,
-  },
-  footerContainer: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
+  formWrapper: { width: "100%", maxWidth: 360 },
+  footerContainer: { alignItems: "center", marginBottom: 40 },
 });
