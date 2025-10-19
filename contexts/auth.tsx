@@ -14,7 +14,7 @@ import {
   registerWithEmailAndName,
   loginWithEmail,
   signOut as signOutSvc,
-} from "../services/auth";
+} from "../services/userService";
 
 type AuthContextType = {
   user: FirebaseUser | null;
