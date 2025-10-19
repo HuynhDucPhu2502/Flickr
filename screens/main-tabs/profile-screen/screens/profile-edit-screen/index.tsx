@@ -18,13 +18,13 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { useAuth } from "../../../../../contexts/auth";
 import { auth, db } from "../../../../../FirebaseConfig";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
-import { updateProfileFields } from "../../../../../services/auth";
+import { updateProfileFields } from "../../../../../services/userService";
 import { updateProfile as fbUpdateProfile } from "firebase/auth";
 import {
   uploadPhotoFromUri,
   deletePhoto,
   setMainPhoto,
-} from "../../../../../services/profilePhoto";
+} from "../../../../../services/profilePhotoService";
 
 // Sections
 import {
@@ -663,6 +663,30 @@ export const ProfileEditScreen = () => {
             />
           </>
         )}
+      />
+
+      {/* Location */}
+      <DetailSheet
+        visible={panel === "location"}
+        title="Location"
+        onClose={() => setPanel(null)}
+        onSave={async (form) => {
+          await updateProfileFields(uid, {
+            location: {
+              city: (form.city as string)?.trim() || undefined,
+              region: (form.region as string)?.trim() || undefined,
+            },
+          });
+          setPanel(null);
+        }}
+        initial={{
+          city: profile?.location?.city ?? "",
+          region: profile?.location?.region ?? "",
+        }}
+        fields={[
+          { key: "city", label: "City", placeholder: "e.g. Ho Chi Minh City" },
+          { key: "region", label: "State/Region", placeholder: "e.g. HCMC" },
+        ]}
       />
 
       {/* Discovery preferences */}
