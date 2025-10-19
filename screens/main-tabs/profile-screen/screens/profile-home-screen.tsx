@@ -16,7 +16,9 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { ProfileStackParamList } from "../../../../types/navigation";
 
-const FALLBACK_AVATAR = "https://i.pravatar.cc/300?img=12";
+const FALLBACK_AVATAR = require("../../../../assets/blank_user_img.png");
+
+type ImgSource = { uri: string } | number;
 
 const ProfileHomeScreen = () => {
   const insets = useSafeAreaInsets();
@@ -45,18 +47,30 @@ const ProfileHomeScreen = () => {
 
   // Ảnh đại diện:
   // - Chỉ dùng profile.photoURL từ Firestore làm nguồn sự thật
-  // - Dùng profile.updatedAt (serverTimestamp) để thêm ?v=... và bust cache
-  const avatarUrl = useMemo(() => {
+  // - Dùng profile.updatedAt (serverTimestamp) để thêm ?v=... và bust cache khi ảnh thay đổi
+  const avatarSource: ImgSource = useMemo(() => {
     const pUrl = profile?.photoURL;
+
+    // Chưa có ảnh -> dùng ảnh local
+    if (!pUrl) return FALLBACK_AVATAR;
+
     const version =
       (profile?.updatedAt as any)?.toMillis?.() ??
       (typeof profile?.updatedAt === "number" ? profile?.updatedAt : 0);
 
-    if (!pUrl) return FALLBACK_AVATAR;
-
     const sep = pUrl.includes("?") ? "&" : "?";
-    return `${pUrl}${sep}v=${version}`;
+    return { uri: `${pUrl}${sep}v=${version}` };
   }, [profile?.photoURL, profile?.updatedAt]);
+
+  // Nếu load ảnh remote lỗi -> chuyển sang ảnh local
+  const [useFallback, setUseFallback] = useState(false);
+  const finalSource: ImgSource = useFallback ? FALLBACK_AVATAR : avatarSource;
+
+  // Ép remount khi URL đổi (với local thì dùng key cố định)
+  const imageKey =
+    typeof finalSource === "object"
+      ? (finalSource as any).uri
+      : "local-fallback";
 
   // Banner nhắc hoàn tất hồ sơ: tính các mục còn thiếu
   const { showOnboardNotice, missingLabels } = useMemo(() => {
@@ -138,10 +152,12 @@ const ProfileHomeScreen = () => {
         {/* Thẻ hồ sơ (text hiển thị tiếng Anh) */}
         <Card style={styles.profileCard}>
           <View style={styles.profileSection}>
-            {/* Ép remount khi URL đổi để chắc chắn ảnh refresh */}
+            {/* Ép remount khi URL đổi để chắc chắn ảnh refresh; defaultSource hiển thị ảnh local trong lúc remote đang tải */}
             <Image
-              key={avatarUrl}
-              source={{ uri: avatarUrl }}
+              key={imageKey}
+              source={finalSource}
+              defaultSource={FALLBACK_AVATAR}
+              onError={() => setUseFallback(true)}
               style={styles.avatar}
             />
             <Text style={styles.name}>

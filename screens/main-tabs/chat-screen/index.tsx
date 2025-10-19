@@ -3,7 +3,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ChatsListScreen from "./ChatsListScreen";
 import ConversationScreen from "./ConversationScreen";
 
-/** Stack params cho Tab Chat */
+
 export type ChatStackParamList = {
   ChatsList: undefined;
   Conversation: {
@@ -14,7 +14,6 @@ export type ChatStackParamList = {
 
 const Stack = createNativeStackNavigator<ChatStackParamList>();
 
-/** Tab "Chat" render 1 Stack riêng */
 const ChatScreen = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

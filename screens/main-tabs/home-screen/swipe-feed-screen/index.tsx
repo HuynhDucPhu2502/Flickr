@@ -16,12 +16,7 @@ import { Header } from "./components/Header";
 import { SwipeCard } from "./components/SwipeCard";
 import { RoundButton } from "./components/RoundButton";
 import { MatchModal } from "./components/MatchModal";
-import {
-  PURPLE_BG1,
-  PURPLE_BG2,
-  PURPLE_DARK,
-  GRAY_TEXT,
-} from "./components/constants";
+import { PURPLE_DARK, GRAY_TEXT } from "./components/constants";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { HomeStackParamList } from "..";
 
@@ -60,12 +55,7 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
     return () => {
       mounted = false;
     };
-  }, [
-    uid,
-    profile?.preferences?.ageMin,
-    profile?.preferences?.ageMax,
-    profile?.preferences?.genders?.join(","),
-  ]);
+  }, [uid, profile?.preferences?.genders?.join(",")]);
 
   // ===== Swipe engine
   const pan = useRef(new Animated.ValueXY()).current;
@@ -156,15 +146,10 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
 
   // ===== UI
   return (
-    <LinearGradient colors={[PURPLE_BG1, PURPLE_BG2]} style={{ flex: 1 }}>
+    <LinearGradient colors={["#B993D6", "#8CA6DB"]} style={{ flex: 1 }}>
       {/* Header */}
       <View style={{ paddingTop: insets.top + 8 }}>
-        <Header
-          title="💜 Flirt"
-          onPressOptions={() => {
-            /* TODO: mở bộ lọc */
-          }}
-        />
+        <Header onPressOptions={() => {}} />
       </View>
 
       <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
