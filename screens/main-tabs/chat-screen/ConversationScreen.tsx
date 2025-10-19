@@ -37,14 +37,20 @@ type ChatMessage = {
   id: string;
   text?: string;
   senderId: string;
-  createdAt?: any; // Firestore Timestamp | undefined
+  createdAt?: any;
   type?: "text";
 };
 
-const AVATAR_FALLBACK = "https://i.pravatar.cc/100";
+// Ảnh fallback local
+const AVATAR_FALLBACK = require("../../../assets/blank_user_img.png");
 
-// 🌌 Midnight purple background (tuple để thỏa kiểu của expo-linear-gradient)
+// Gradient nền
 const BG_GRADIENT = ["#0E0C1F", "#1A1040", "#2A145A"] as const;
+
+// Kiểu nguồn ảnh hợp lệ cho <Image />
+type ImgSource = { uri: string } | number;
+const toImgSource = (v?: string | number | null): ImgSource =>
+  typeof v === "number" ? v : v ? { uri: v } : AVATAR_FALLBACK;
 
 const ConversationScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -58,8 +64,17 @@ const ConversationScreen: React.FC = () => {
   const [text, setText] = useState("");
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
 
-  // Helpers
-  const peerAvatar = peer?.photoURL || AVATAR_FALLBACK;
+  // Avatar header: remote -> fallback local khi lỗi tải
+  const [peerImgErr, setPeerImgErr] = useState(false);
+  const peerAvatarSrc: ImgSource = peerImgErr
+    ? AVATAR_FALLBACK
+    : toImgSource(peer?.photoURL);
+  const peerImageKey =
+    typeof peerAvatarSrc === "object"
+      ? (peerAvatarSrc as any).uri
+      : "local-peer";
+
+  // Helpers time
   const toDate = (ts: any): Date | null => {
     if (!ts) return null;
     if (typeof ts.toDate === "function") return ts.toDate();
@@ -97,7 +112,7 @@ const ConversationScreen: React.FC = () => {
     );
   }
 
-  // ===== Lắng nghe tin nhắn realtime
+  // ===== Realtime
   useEffect(() => {
     console.log("[Conversation] subscribe messages:", chatId);
     const q = query(
@@ -122,14 +137,12 @@ const ConversationScreen: React.FC = () => {
     };
   }, [chatId]);
 
-  // ===== Gửi tin nhắn text
+  // ===== Send
   const send = async () => {
     const content = text.trim();
     if (!content) return;
     setText("");
-
     try {
-      // 1) Thêm message
       const ref = await addDoc(collection(db, "chats", chatId, "messages"), {
         text: content,
         senderId: me,
@@ -138,7 +151,6 @@ const ConversationScreen: React.FC = () => {
       });
       console.log("[Conversation] message added:", ref.id);
 
-      // 2) Cập nhật lastMessage + updatedAt ở chats/{chatId}
       await setDoc(
         doc(db, "chats", chatId),
         {
@@ -151,32 +163,26 @@ const ConversationScreen: React.FC = () => {
         },
         { merge: true }
       );
-      console.log(
-        "[Conversation] lastMessage/updatedAt updated on chat:",
-        chatId
-      );
     } catch (e) {
       console.error("[Conversation] send error:", e);
     }
   };
 
-  // ===== Render utils (grouping & day separators)
-  const getNextItem = (index: number) => msgs[index + 1]; // inverted list (desc), next = older
+  // ===== Grouping / separators
+  const getNextItem = (index: number) => msgs[index + 1];
   const shouldShowAvatar = (item: ChatMessage, next?: ChatMessage) => {
     if (item.senderId === me) return false;
-    if (!next) return true; // last in the list (oldest)
+    if (!next) return true;
     const nextSameSender = next.senderId === item.senderId;
     const t1 = toDate(item.createdAt);
     const t2 = toDate(next.createdAt);
     const sameDay = isSameDay(t1, t2);
-    // show avatar ở cuối cụm peer hoặc khi đổi ngày
     return !(nextSameSender && sameDay);
   };
   const shouldShowTime = (item: ChatMessage, next?: ChatMessage) => {
     const t1 = toDate(item.createdAt);
     if (!next) return true;
     const t2 = toDate(next.createdAt);
-    // show time khi đổi người gửi hoặc cách nhau >=10'
     if (item.senderId !== next.senderId) return true;
     if (!t1 || !t2) return false;
     if (!isSameDay(t1, t2)) return true;
@@ -188,7 +194,7 @@ const ConversationScreen: React.FC = () => {
     const d1 = toDate(item.createdAt);
     const d2 = toDate(prev?.createdAt);
     if (!d1) return false;
-    if (!prev) return true; // top-most -> show today's label
+    if (!prev) return true;
     return !isSameDay(d1, d2);
   };
   const dayLabel = (d?: Date | null) => {
@@ -221,7 +227,6 @@ const ConversationScreen: React.FC = () => {
 
     return (
       <>
-        {/* Day separator */}
         {showDay ? (
           <View style={styles.dayWrap}>
             <Text style={styles.dayText}>{dayLabel(created)}</Text>
@@ -229,11 +234,16 @@ const ConversationScreen: React.FC = () => {
         ) : null}
 
         <View style={[styles.row, mine ? styles.rowMe : styles.rowPeer]}>
-          {/* Peer avatar (only at end of group) */}
           {!mine && (
             <View style={styles.avatarSlot}>
               {showAvatar ? (
-                <Image source={{ uri: peerAvatar }} style={styles.avatar} />
+                <Image
+                  key={peerImageKey + "-list"}
+                  source={peerAvatarSrc}
+                  defaultSource={AVATAR_FALLBACK}
+                  onError={() => setPeerImgErr(true)}
+                  style={styles.avatar}
+                />
               ) : (
                 <View style={{ width: 32 }} />
               )}
@@ -246,7 +256,6 @@ const ConversationScreen: React.FC = () => {
             <Text style={[styles.bubbleText, mine && { color: "#fff" }]}>
               {item.text}
             </Text>
-
             {showTime ? (
               <Text
                 style={[
@@ -259,33 +268,36 @@ const ConversationScreen: React.FC = () => {
             ) : null}
           </View>
 
-          {/* Spacer bên phải cho bubble của mình để cân đối */}
           {mine && <View style={styles.avatarSlot} />}
         </View>
       </>
     );
   };
 
-  // Disable gửi khi rỗng
   const canSend = useMemo(() => text.trim().length > 0, [text]);
 
   return (
     <LinearGradient colors={BG_GRADIENT} style={{ flex: 1 }}>
-      {/* Header có avatar + tên + icon lớn hơn */}
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity onPress={() => nav.goBack()} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Image source={{ uri: peerAvatar }} style={styles.headerAvatar} />
+          <Image
+            key={peerImageKey}
+            source={peerAvatarSrc}
+            defaultSource={AVATAR_FALLBACK}
+            onError={() => setPeerImgErr(true)}
+            style={styles.headerAvatar}
+          />
           <Text numberOfLines={1} style={styles.headerTitle}>
             {peer?.name || "Chat"}
           </Text>
         </View>
 
         <View style={styles.headerRight}>
-          {/* Phóng to icon call & alert */}
           <TouchableOpacity style={styles.headerBtn} onPress={() => {}}>
             <Ionicons name="call-outline" size={26} color="#fff" />
           </TouchableOpacity>
@@ -315,7 +327,6 @@ const ConversationScreen: React.FC = () => {
           />
         </TouchableWithoutFeedback>
 
-        {/* Input pill — đã bỏ nút dấu “+” */}
         <View style={[styles.inputRow, { paddingBottom: insets.bottom + 10 }]}>
           <TextInput
             placeholder="Type a message"
@@ -325,7 +336,6 @@ const ConversationScreen: React.FC = () => {
             onChangeText={setText}
             multiline
           />
-
           <TouchableOpacity
             style={[styles.sendBtn, !canSend && { opacity: 0.4 }]}
             onPress={send}
@@ -340,7 +350,6 @@ const ConversationScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  // Header
   header: {
     paddingHorizontal: 8,
     paddingBottom: 8,
@@ -364,7 +373,6 @@ const styles = StyleSheet.create({
   },
   headerRight: { flexDirection: "row", alignItems: "center" },
 
-  // List rows
   row: {
     flexDirection: "row",
     paddingHorizontal: 6,
@@ -391,7 +399,7 @@ const styles = StyleSheet.create({
   bubbleMe: {
     backgroundColor: "#6C63FF",
     borderTopRightRadius: 6,
-    marginLeft: 50, // chừa khoảng avatar bên phải cho cân đối
+    marginLeft: 50,
   },
   bubblePeer: {
     backgroundColor: "#FFFFFF",
@@ -405,11 +413,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
 
-  // Day separator
-  dayWrap: {
-    alignItems: "center",
-    marginVertical: 6,
-  },
+  dayWrap: { alignItems: "center", marginVertical: 6 },
   dayText: {
     backgroundColor: "rgba(255,255,255,0.18)",
     color: "#fff",
@@ -420,7 +424,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  // Input row (bỏ nút +, chỉ còn input + send)
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",

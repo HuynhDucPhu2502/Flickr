@@ -40,9 +40,8 @@ import {
 // Các component dùng trong bottom sheets
 import { RNInput } from "./components/RNInput";
 import { PrimaryButton } from "./components/PrimaryButton";
-import { Stepper } from "./components/Stepper";
 import { DetailSheet } from "./components/DetailSheet";
-import { PURPLE, TEXT_MUTE } from "./components/theme";
+import { PURPLE } from "./components/theme";
 import type { PhotoDoc, Panel } from "./components/types";
 
 export const ProfileEditScreen = () => {
@@ -265,11 +264,9 @@ export const ProfileEditScreen = () => {
   // Tóm tắt Discovery Preferences
   const pref = profile?.preferences ?? {};
   const prefPreview = useMemo(() => {
-    const aMin = pref.ageMin ?? 18;
-    const aMax = pref.ageMax ?? 40;
     const gs =
       pref.genders && pref.genders.length ? pref.genders.join("/") : "all";
-    return `${aMin}-${aMax} • ${gs}`;
+    return `${gs}`;
   }, [profile?.preferences]);
 
   // Giá trị hiển thị cho phần Details
@@ -575,30 +572,28 @@ export const ProfileEditScreen = () => {
         initial={{ gender: (profile?.gender as string) ?? "" }}
         renderBody={(state, setState) => (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {["male", "female", "nonbinary", "prefer_not_to_say", "custom"].map(
-              (g) => (
-                <TouchableOpacity
-                  key={g}
-                  onPress={() => setState((s: any) => ({ ...s, gender: g }))}
+            {["male", "female", "nonbinary"].map((g) => (
+              <TouchableOpacity
+                key={g}
+                onPress={() => setState((s: any) => ({ ...s, gender: g }))}
+                style={[
+                  styles.chipBtn,
+                  state.gender === g && {
+                    backgroundColor: PURPLE,
+                    borderColor: PURPLE,
+                  },
+                ]}
+              >
+                <Text
                   style={[
-                    styles.chipBtn,
-                    state.gender === g && {
-                      backgroundColor: PURPLE,
-                      borderColor: PURPLE,
-                    },
+                    styles.chipBtnText,
+                    state.gender === g && { color: "#fff" },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.chipBtnText,
-                      state.gender === g && { color: "#fff" },
-                    ]}
-                  >
-                    {g}
-                  </Text>
-                </TouchableOpacity>
-              )
-            )}
+                  {g}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         )}
       />
@@ -685,7 +680,7 @@ export const ProfileEditScreen = () => {
         }}
         fields={[
           { key: "city", label: "City", placeholder: "e.g. Ho Chi Minh City" },
-          { key: "region", label: "State/Region", placeholder: "e.g. HCMC" },
+          { key: "region", label: "State/Region", placeholder: "e.g. VN" },
         ]}
       />
 
@@ -695,23 +690,17 @@ export const ProfileEditScreen = () => {
         title="Discovery preferences"
         onClose={() => setPanel(null)}
         onSave={async (form) => {
-          const clamp = (n: number, lo: number, hi: number) =>
-            Math.max(lo, Math.min(hi, n));
-          let ageMin = clamp(Number(form.ageMin) || 18, 18, 80);
-          let ageMax = clamp(Number(form.ageMax) || 40, ageMin, 80);
           const genders =
             Array.isArray(form.genders) && form.genders.length
               ? form.genders
               : ["female", "male", "nonbinary"];
 
           await updateProfileFields(uid, {
-            preferences: { ageMin, ageMax, genders },
+            preferences: { genders },
           });
           setPanel(null);
         }}
         initial={{
-          ageMin: profile?.preferences?.ageMin ?? 18,
-          ageMax: profile?.preferences?.ageMax ?? 40,
           genders: profile?.preferences?.genders ?? [
             "female",
             "male",
@@ -730,29 +719,6 @@ export const ProfileEditScreen = () => {
 
           return (
             <View style={{ gap: 12 }}>
-              <Text style={styles.sheetSubTitle}>Age range</Text>
-              <View style={{ gap: 8 }}>
-                <Stepper
-                  label="Min"
-                  value={Number(state.ageMin) || 18}
-                  min={18}
-                  max={80}
-                  onChange={(v: number) => {
-                    const max = Math.max(v, Number(state.ageMax) || 40);
-                    set("ageMin", v);
-                    set("ageMax", max);
-                  }}
-                />
-                <Stepper
-                  label="Max"
-                  value={Number(state.ageMax) || 40}
-                  min={Number(state.ageMin) || 18}
-                  max={80}
-                  onChange={(v: number) => set("ageMax", v)}
-                />
-              </View>
-
-              <Text style={styles.sheetSubTitle}>Show me</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {genders.map((g) => {
                   const sel = selectedGenders.includes(g);

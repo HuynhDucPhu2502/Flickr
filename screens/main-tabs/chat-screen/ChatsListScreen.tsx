@@ -26,6 +26,14 @@ import { useAuth } from "../../../contexts/auth";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ChatStackParamList } from ".";
 
+// Fallback local
+const AVATAR_FALLBACK = require("../../../assets/blank_user_img.png");
+
+// Kiểu nguồn ảnh hợp lệ cho <Image />
+type ImgSource = { uri: string } | number;
+const toImgSource = (v?: string | number | null): ImgSource =>
+  typeof v === "number" ? v : v ? { uri: v } : AVATAR_FALLBACK;
+
 type ChatThread = {
   id: string;
   participants: string[];
@@ -34,16 +42,16 @@ type ChatThread = {
   updatedAt?: any;
 };
 
-const AVATAR_FALLBACK = "https://i.pravatar.cc/100";
-
+// ===== Bubble "New matches"
 const MatchBubble: React.FC<{
   name: string;
-  photoURL?: string;
+  photo?: string | number | null;
   onPress: () => void;
-}> = ({ name, photoURL, onPress }) => (
+}> = ({ name, photo, onPress }) => (
   <TouchableOpacity style={styles.matchBubble} onPress={onPress}>
     <Image
-      source={{ uri: photoURL || AVATAR_FALLBACK }}
+      source={toImgSource(photo)}
+      defaultSource={AVATAR_FALLBACK}
       style={styles.matchAvatar}
     />
     <Text numberOfLines={1} style={styles.matchName}>
@@ -60,7 +68,7 @@ const ChatsListScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [threads, setThreads] = useState<ChatThread[]>([]);
 
-  // Safe navigate helper (works both inside Chat stack or from parent Tab)
+  // Safe navigate helper
   const goToConversation = (
     chatId: string,
     peer: { uid: string; name?: string; photoURL?: string }
@@ -95,14 +103,6 @@ const ChatsListScreen: React.FC = () => {
       async (snap) => {
         console.log("[ChatsList] snapshot size:", snap.size);
 
-        // Log docChanges for precise diff
-        const changes = snap.docChanges().map((c) => ({
-          type: c.type,
-          id: c.doc.id,
-          data: c.doc.data(),
-        }));
-        if (changes.length) console.log("[ChatsList] docChanges:", changes);
-
         const items: ChatThread[] = [];
         for (const d of snap.docs) {
           const data = d.data() as any;
@@ -114,11 +114,10 @@ const ChatsListScreen: React.FC = () => {
             updatedAt: data.updatedAt,
           };
 
-          // If members missing -> fetch peer for UI
+          // Nếu thiếu members -> lấy peer từ users/{peer}
           if (!item.members && Array.isArray(item.participants)) {
             const peerId = item.participants.find((x: string) => x !== uid);
             if (peerId) {
-              console.log("[ChatsList] fetching missing member:", peerId);
               const us = await getDoc(doc(db, "users", peerId));
               if (us.exists()) {
                 item.members = {
@@ -127,21 +126,11 @@ const ChatsListScreen: React.FC = () => {
                     photoURL: us.data().photoURL,
                   },
                 };
-              } else {
-                console.warn("[ChatsList] user not found:", peerId);
               }
             }
           }
           items.push(item);
         }
-
-        const nm = items.filter((t) => !t.lastMessage).length;
-        const ms = items.filter((t) => !!t.lastMessage).length;
-        console.log("[ChatsList] threads resolved:", {
-          total: items.length,
-          newMatches: nm,
-          messages: ms,
-        });
 
         setThreads(items);
         setLoading(false);
@@ -164,8 +153,16 @@ const ChatsListScreen: React.FC = () => {
     const peerId =
       item.participants.find((x) => x !== uid) || item.participants[0];
     const peerName = item.members?.[peerId]?.displayName || "Unknown";
-    const peerAvatar = item.members?.[peerId]?.photoURL || AVATAR_FALLBACK;
+    const peerAvatarUrl = item.members?.[peerId]?.photoURL; // có thể undefined
+    const peerAvatarSrc = toImgSource(peerAvatarUrl);
     const snippet = item.lastMessage?.text || "Start the conversation";
+
+    // key để ép remount khi url đổi (chỉ khi remote)
+    const imgKey =
+      typeof peerAvatarSrc === "object"
+        ? (peerAvatarSrc as any).uri
+        : `local-${item.id}`;
+
     return (
       <TouchableOpacity
         style={styles.thread}
@@ -173,11 +170,16 @@ const ChatsListScreen: React.FC = () => {
           goToConversation(item.id, {
             uid: peerId,
             name: peerName,
-            photoURL: peerAvatar,
+            photoURL: peerAvatarUrl,
           })
         }
       >
-        <Image source={{ uri: peerAvatar }} style={styles.avatar} />
+        <Image
+          key={imgKey}
+          source={peerAvatarSrc}
+          defaultSource={AVATAR_FALLBACK}
+          style={styles.avatar}
+        />
         <View style={{ flex: 1 }}>
           <Text style={styles.name}>{peerName}</Text>
           <Text numberOfLines={1} style={styles.snippet}>
@@ -234,17 +236,17 @@ const ChatsListScreen: React.FC = () => {
                       item.participants[0];
                     const peerName =
                       item.members?.[peerId]?.displayName || "Unknown";
-                    const peerAvatar =
-                      item.members?.[peerId]?.photoURL || AVATAR_FALLBACK;
+                    const peerAvatar = item.members?.[peerId]?.photoURL || null;
+
                     return (
                       <MatchBubble
                         name={peerName}
-                        photoURL={peerAvatar}
+                        photo={peerAvatar}
                         onPress={() =>
                           goToConversation(item.id, {
                             uid: peerId,
                             name: peerName,
-                            photoURL: peerAvatar,
+                            photoURL: peerAvatar || undefined,
                           })
                         }
                       />
@@ -291,6 +293,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
+  // New matches bubble
   matchBubble: { width: 78, alignItems: "center", marginRight: 10 },
   matchAvatar: {
     width: 56,
@@ -300,9 +303,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.8)",
+    objectFit: "contain",
   },
   matchName: { color: "#fff", fontSize: 12, textAlign: "center" },
 
+  // Message item
   thread: {
     backgroundColor: "#fff",
     borderRadius: 16,
