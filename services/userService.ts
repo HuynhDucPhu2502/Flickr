@@ -49,8 +49,6 @@ export type UserProfile = {
     region?: string;
   };
   preferences?: {
-    ageMin?: number;
-    ageMax?: number;
     genders?: Array<"male" | "female" | "nonbinary">;
   };
 };
@@ -90,8 +88,6 @@ function defaultProfile(
     interests: [],
     languages: [],
     preferences: {
-      ageMin: 18,
-      ageMax: 40,
       genders: ["female", "male", "nonbinary"],
     },
     ...extra,
