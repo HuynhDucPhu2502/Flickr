@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../FirebaseConfig";
 import type { UserProfile } from "./auth";
+import { ensure1to1Chat } from "./chatService";
 
 /** Kiểu ứng viên hiển thị trên màn Home (rút gọn) */
 export type Candidate = Pick<
@@ -26,6 +27,7 @@ export type Candidate = Pick<
   | "gender"
 > & { age?: number };
 
+/** Tính tuổi từ chuỗi birthday YYYY-MM-DD */
 function calcAge(birthday?: string | null): number | undefined {
   if (!birthday) return;
   const m = birthday.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -41,7 +43,7 @@ function calcAge(birthday?: string | null): number | undefined {
   return age;
 }
 
-/** Lấy danh sách id đã swipe */
+/** Lấy danh sách id đã swipe (phải/trái) của mình */
 export async function getSwipedIds(uid: string): Promise<{
   right: Set<string>;
   left: Set<string>;
@@ -55,10 +57,15 @@ export async function getSwipedIds(uid: string): Promise<{
   return { right, left };
 }
 
-/** Lấy danh sách ứng viên cho HomeScreen */
+/**
+ * Lấy danh sách ứng viên cho HomeScreen
+ * - Ưu tiên updatedAt mới nhất
+ * - Bỏ chính mình & những người đã swipe
+ *
+ * ⚠️ Cần index: users(onboarded Asc, updatedAt Desc)
+ */
 export async function fetchCandidates(
   myUid: string,
-  prefs?: UserProfile["preferences"],
   take: number = 25
 ): Promise<Candidate[]> {
   console.log("🔥 [fetchCandidates] Start for:", myUid);
@@ -83,8 +90,12 @@ export async function fetchCandidates(
     const out: Candidate[] = [];
     snap.forEach((d) => {
       const u = d.data() as UserProfile;
-      if (u.uid === myUid) return;
-      if (right.has(u.uid) || left.has(u.uid)) return;
+      if (u.uid === myUid) return; // bỏ chính mình
+      if (right.has(u.uid) || left.has(u.uid)) return; // bỏ người đã swipe
+
+      // Tính tuổi (nếu có)
+      const age = calcAge(u.birthday ?? null);
+
       out.push({
         uid: u.uid,
         displayName: u.displayName ?? "User",
@@ -93,19 +104,23 @@ export async function fetchCandidates(
         bio: u.bio,
         occupation: u.occupation,
         gender: u.gender,
-        age: undefined,
+        age,
       });
     });
 
     console.log("✅ [fetchCandidates] Done, returning:", out.length);
     return out.slice(0, take);
   } catch (err) {
-    console.error("❌ [fetchCandidates] Lỗi:", err);
+    console.error("❌ [fetchCandidates] Error:", err);
     throw err;
   }
 }
 
-/** Swipe phải: ghi log + kiểm tra match */
+/**
+ * Swipe phải: ghi log + kiểm tra match
+ * - Nếu mutual like → tạo matches/{matchId}
+ * - Sau đó đảm bảo tạo chats/{uidA_uidB}
+ */
 export async function swipeRight(
   myUid: string,
   targetUid: string
@@ -115,18 +130,16 @@ export async function swipeRight(
   const myRightRef = doc(db, "users", myUid, "swipes_right", targetUid);
   const theyRightRef = doc(db, "users", targetUid, "swipes_right", myUid);
 
-  // matchId có thể tính luôn, không phụ thuộc nhánh
   const [a, b] = [myUid, targetUid].sort();
   const matchId = `${a}_${b}`;
   const matchRef = doc(db, "matches", matchId);
 
   try {
     const result = await runTransaction(db, async (tx) => {
-      // ✅ 1) ĐỌC TẤT CẢ trước
       const [alreadySnap, theySnap, matchSnap] = await Promise.all([
         tx.get(myRightRef),
         tx.get(theyRightRef),
-        tx.get(matchRef), // đọc luôn, dù có thể không cần ghi
+        tx.get(matchRef),
       ]);
 
       const alreadyExists = alreadySnap.exists();
@@ -139,7 +152,6 @@ export async function swipeRight(
         theyLikedYou
       );
 
-      // ✅ 2) SAU KHI đã đọc hết → mới bắt đầu GHI
       if (!alreadyExists) {
         tx.set(myRightRef, { createdAt: serverTimestamp() });
       }
@@ -158,6 +170,11 @@ export async function swipeRight(
       return { matched: false as const };
     });
 
+    if (result.matched) {
+      await ensure1to1Chat(myUid, targetUid);
+      console.log("💬 [swipeRight] Chat ensured for:", myUid, targetUid);
+    }
+
     console.log("✅ [swipeRight] done:", result);
     return result;
   } catch (err) {
@@ -166,8 +183,11 @@ export async function swipeRight(
   }
 }
 
-/** Swipe trái: chỉ lưu dấu */
+/** Swipe trái: chỉ lưu dấu để lần sau không hiện lại */
 export async function swipeLeft(myUid: string, targetUid: string) {
-  const ref = doc(db, "users", myUid, "swipes_left", targetUid);
-  await setDoc(ref, { createdAt: serverTimestamp() }, { merge: true });
+  await setDoc(
+    doc(db, "users", myUid, "swipes_left", targetUid),
+    { createdAt: serverTimestamp() },
+    { merge: true }
+  );
 }
