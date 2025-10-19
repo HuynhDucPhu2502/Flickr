@@ -1,10 +1,10 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { ChatScreen } from "./chat-screen";
 import { TabParamList } from "../../types/navigation";
 import { ProfileScreen } from "./profile-screen";
 import HomeScreen from "./home-screen";
+import ChatScreen from "./chat-screen";
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
