@@ -9,6 +9,7 @@ import { SignInScreen } from "./screens/sign-in-screen";
 import { MainTabs } from "./screens/main-tabs";
 import { RootStackParamList } from "./types/navigation";
 import { AuthProvider, useAuth } from "./contexts/auth";
+import { StatusBar } from "expo-status-bar";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -40,12 +41,15 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <PaperProvider>
-        <AuthProvider>
-          <RootNavigator />
-        </AuthProvider>
-      </PaperProvider>
-    </SafeAreaProvider>
+    <>
+      <StatusBar style="light" />
+      <SafeAreaProvider>
+        <PaperProvider>
+          <AuthProvider>
+            <RootNavigator />
+          </AuthProvider>
+        </PaperProvider>
+      </SafeAreaProvider>
+    </>
   );
 }
