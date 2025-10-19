@@ -1,4 +1,3 @@
-// services/swipe.ts
 import {
   collection,
   doc,
@@ -12,7 +11,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db } from "../FirebaseConfig";
-import type { UserProfile } from "./auth";
+import type { UserProfile } from "./userService";
 import { ensure1to1Chat } from "./chatService";
 
 /** Kiểu ứng viên hiển thị trên màn Home (rút gọn) */

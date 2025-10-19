@@ -1,4 +1,3 @@
-// services/profilePhoto.ts
 import {
   doc,
   setDoc,
