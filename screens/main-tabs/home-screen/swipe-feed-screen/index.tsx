@@ -9,7 +9,7 @@ import {
   fetchCandidates,
   swipeLeft,
   swipeRight,
-} from "../../../../services/swipe";
+} from "../../../../services/swipeService";
 
 // Components
 import { Header } from "./components/Header";
@@ -47,7 +47,7 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
       if (!uid) return;
       setLoading(true);
       try {
-        const list = await fetchCandidates(uid, profile?.preferences, 25);
+        const list = await fetchCandidates(uid);
         if (mounted) {
           setCards(list);
           setLoading(false);
@@ -188,7 +188,10 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
                 style={{ position: "absolute", top: 0, left: 0, right: 0 }}
                 elevation={1}
                 onPress={() =>
-                  navigation.navigate("CandidateDetails", { uid: nextCard.uid })
+                  navigation.navigate("CandidateDetails", {
+                    uid: nextCard.uid,
+                    photoURL: nextCard.photoURL ?? undefined,
+                  })
                 }
               />
             )}
@@ -209,7 +212,10 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
               <SwipeCard
                 candidate={topCard}
                 onPress={() =>
-                  navigation.navigate("CandidateDetails", { uid: topCard.uid })
+                  navigation.navigate("CandidateDetails", {
+                    uid: topCard.uid,
+                    photoURL: topCard.photoURL ?? undefined,
+                  })
                 }
               />
 

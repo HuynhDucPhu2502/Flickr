@@ -6,7 +6,7 @@ import CandidateDetailsScreen from "./candidate-details-screen";
 
 export type HomeStackParamList = {
   SwipeFeed: undefined;
-  CandidateDetails: { uid: string };
+  CandidateDetails: { uid: string; photoURL?: string };
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();

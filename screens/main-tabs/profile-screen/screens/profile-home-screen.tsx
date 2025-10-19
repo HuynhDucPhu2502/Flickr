@@ -16,51 +16,62 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { ProfileStackParamList } from "../../../../types/navigation";
 
+const FALLBACK_AVATAR = "https://i.pravatar.cc/300?img=12";
+
 const ProfileHomeScreen = () => {
   const insets = useSafeAreaInsets();
   const { user, profile, logout } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
   const nav = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
 
+  // Đăng xuất (Alert text hiển thị tiếng Anh)
   const handleLogout = async () => {
     setMenuVisible(false);
-    Alert.alert("Xác nhận đăng xuất", "Bạn có chắc chắn muốn đăng xuất?", [
-      { text: "Hủy", style: "cancel" },
+    Alert.alert("Confirm sign out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
       {
-        text: "Đăng xuất",
+        text: "Sign out",
         style: "destructive",
         onPress: async () => {
           try {
             await logout();
           } catch (e: any) {
-            Alert.alert("Lỗi", e?.message ?? "Đăng xuất thất bại");
+            Alert.alert("Error", e?.message ?? "Sign out failed");
           }
         },
       },
     ]);
   };
 
-  const avatarUrl =
-    profile?.photoURL ?? user?.photoURL ?? "https://i.pravatar.cc/300?img=12";
+  // Ảnh đại diện:
+  // - Chỉ dùng profile.photoURL từ Firestore làm nguồn sự thật
+  // - Dùng profile.updatedAt (serverTimestamp) để thêm ?v=... và bust cache
+  const avatarUrl = useMemo(() => {
+    const pUrl = profile?.photoURL;
+    const version =
+      (profile?.updatedAt as any)?.toMillis?.() ??
+      (typeof profile?.updatedAt === "number" ? profile?.updatedAt : 0);
 
-  // ===== Kiểm tra điều kiện onboard (để hiển thị banner nhắc nhở) =====
+    if (!pUrl) return FALLBACK_AVATAR;
+
+    const sep = pUrl.includes("?") ? "&" : "?";
+    return `${pUrl}${sep}v=${version}`;
+  }, [profile?.photoURL, profile?.updatedAt]);
+
+  // Banner nhắc hoàn tất hồ sơ: tính các mục còn thiếu
   const { showOnboardNotice, missingLabels } = useMemo(() => {
-    // Các điều kiện cơ bản để hồ sơ sẵn sàng hiển thị
     const hasMainPhoto = !!profile?.photoURL;
     const hasName = !!profile?.displayName?.trim();
     const hasGender = !!profile?.gender;
     const hasBirthday = !!profile?.birthday;
 
-    // Danh sách mục còn thiếu (để liệt kê đẹp trên UI)
     const missing: string[] = [];
     if (!hasMainPhoto) missing.push("Main photo");
     if (!hasName) missing.push("Display name");
     if (!hasGender) missing.push("Gender");
     if (!hasBirthday) missing.push("Birthday");
 
-    // Quyết định hiện banner khi: (1) profile đã load, và (2) chưa onboard hoặc còn thiếu mục
     const shouldShow = !!profile && (!profile.onboarded || missing.length > 0);
-
     return { showOnboardNotice: shouldShow, missingLabels: missing };
   }, [profile]);
 
@@ -74,7 +85,7 @@ const ProfileHomeScreen = () => {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+        {/* Header (text hiển thị tiếng Anh) */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>My Profile</Text>
           <Menu
@@ -89,11 +100,12 @@ const ProfileHomeScreen = () => {
               </TouchableOpacity>
             }
           >
-            <Menu.Item title="Đăng xuất" onPress={handleLogout} />
+            {/* Menu item hiển thị tiếng Anh */}
+            <Menu.Item title="Sign out" onPress={handleLogout} />
           </Menu>
         </View>
 
-        {/* ===== Banner nhắc hoàn tất hồ sơ (chỉ hiện khi chưa onboard) ===== */}
+        {/* Banner nhắc hoàn tất hồ sơ (text hiển thị tiếng Anh) */}
         {showOnboardNotice ? (
           <View style={styles.noticeBox}>
             <View style={styles.noticeIcon}>
@@ -123,11 +135,12 @@ const ProfileHomeScreen = () => {
           </View>
         ) : null}
 
-        {/* Profile Card */}
+        {/* Thẻ hồ sơ (text hiển thị tiếng Anh) */}
         <Card style={styles.profileCard}>
           <View style={styles.profileSection}>
+            {/* Ép remount khi URL đổi để chắc chắn ảnh refresh */}
             <Image
-              key={avatarUrl || "fallback"} // 👈 ép remount khi URL đổi
+              key={avatarUrl}
               source={{ uri: avatarUrl }}
               style={styles.avatar}
             />
@@ -138,7 +151,7 @@ const ProfileHomeScreen = () => {
               {user?.email ?? "example@gmail.com"}
             </Text>
 
-            {/* 2 nút điều hướng */}
+            {/* Nút điều hướng (text hiển thị tiếng Anh) */}
             <View style={{ flexDirection: "row", gap: 12, marginTop: 10 }}>
               <Button
                 mode="outlined"
@@ -161,7 +174,7 @@ const ProfileHomeScreen = () => {
             </View>
           </View>
 
-          {/* Verification */}
+          {/* Khối gợi ý xác minh (text hiển thị tiếng Anh) */}
           <View style={styles.verifyBox}>
             <Ionicons
               name="shield-checkmark-outline"
@@ -178,7 +191,7 @@ const ProfileHomeScreen = () => {
           </View>
         </Card>
 
-        {/* Premium */}
+        {/* Khối Premium (text hiển thị tiếng Anh) */}
         <Card style={styles.premiumBox}>
           <LinearGradient
             colors={["#9C27B0", "#E91E63"]}
@@ -213,11 +226,11 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
 
-  // ===== Notice banner styles =====
+  // Style banner nhắc nhở
   noticeBox: {
     marginHorizontal: 20,
     marginTop: 16,
-    backgroundColor: "#F1EDFF", // tím nhạt (match theme)
+    backgroundColor: "#F1EDFF",
     borderColor: "#D6CEFF",
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
@@ -226,7 +239,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    // shadow nhẹ
     shadowColor: "#000",
     shadowOpacity: 0.06,
     shadowRadius: 8,

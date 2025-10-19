@@ -2,7 +2,7 @@ import React from "react";
 import { View, Image, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import type { Candidate } from "../../../../../services/swipe";
+import type { Candidate } from "../../../../../services/swipeService";
 import { CARD_W, CARD_H } from "./constants";
 
 export const SwipeCard: React.FC<{

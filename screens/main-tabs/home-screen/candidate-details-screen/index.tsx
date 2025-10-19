@@ -1,470 +1,402 @@
+// screens/home/CandidateDetailsScreen.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  Image,
-  Dimensions,
-  ActivityIndicator,
   TouchableOpacity,
-  Alert,
+  ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import {
-  doc,
-  getDoc,
   collection,
-  query,
+  doc,
+  onSnapshot,
   orderBy,
-  getDocs,
+  query,
+  where,
 } from "firebase/firestore";
+
+import { PhotoCarousel } from "./components/PhotoCarousel";
 import { db } from "../../../../FirebaseConfig";
-import { useAuth } from "../../../../contexts/auth";
-import { swipeLeft, swipeRight } from "../../../../services/swipe";
-import type { UserProfile } from "../../../../services/auth";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { HomeStackParamList } from "..";
+import type { HomeStackParamList } from "..";
 
-const { width } = Dimensions.get("window");
-const PHOTO_H = Math.round(width * 1.1);
+// ===== Màu & style dùng chung =====
 const PURPLE = "#6C63FF";
-const GRAY = "#6B7280";
-const BG_SOFT = "#F6F0FA";
+const CARD_BG = "#EFE8FF"; // tím rất nhạt giống UI mẫu
+const TEXT_HEADING = "#2B2B3D";
+const TEXT_BODY = "#4B4B63";
+const TEXT_MUTE = "#8A8FA6";
 
-type PhotoDoc = {
-  id: string;
-  url: string;
-  storagePath: string;
-  width: number;
-  height: number;
-  isMain: boolean;
-  order: number;
-  uploadedAt?: any;
+type Candidate = {
+  displayName?: string;
+  birthday?: string; // YYYY-MM-DD
+  bio?: string;
+  gender?: string;
+  location?: { city?: string; region?: string };
+  occupation?: { title?: string; company?: string };
+  education?: { level?: string; school?: string };
+  interests?: string[];
+  languages?: string[];
+  photoURL?: string | null;
+  updatedAt?: any;
 };
 
-type Props = NativeStackScreenProps<HomeStackParamList, "CandidateDetails">;
+type RouteProps = RouteProp<HomeStackParamList, "CandidateDetails">;
 
-const CandidateDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
+// ===== Component thẻ (card) dùng lại =====
+const SectionCard: React.FC<{
+  title: string;
+  subtitle?: string;
+  children?: any;
+}> = ({ title, subtitle, children }) => (
+  <View style={styles.card}>
+    <Text style={styles.cardTitle}>{title}</Text>
+    {subtitle ? <Text style={styles.cardSub}>{subtitle}</Text> : null}
+    <View style={{ marginTop: 12 }}>{children}</View>
+  </View>
+);
+
+// ===== Một dòng detail với icon + label + value =====
+const RowItem: React.FC<{
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  last?: boolean;
+}> = ({ icon, label, value, last }) => (
+  <View style={[styles.row, !last && styles.rowDivider]}>
+    <View style={styles.rowIcon}>
+      <Ionicons name={icon} size={18} color={PURPLE} />
+    </View>
+    <Text style={styles.rowLabel}>{label}</Text>
+    <Text numberOfLines={1} style={styles.rowValue}>
+      {value || "Not provided"}
+    </Text>
+  </View>
+);
+
+// ===== Chip đơn giản =====
+const Chip: React.FC<{ text: string; alt?: boolean }> = ({ text, alt }) => (
+  <View style={[styles.chip, alt && styles.chipAlt]}>
+    <Text style={[styles.chipText, alt && { color: TEXT_HEADING }]}>
+      {text}
+    </Text>
+  </View>
+);
+
+export const CandidateDetailsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const targetUid = route.params.uid;
-
-  const { user } = useAuth();
-  const myUid = user?.uid!;
+  const nav = useNavigation();
+  const { params } = useRoute<RouteProps>();
+  const { uid, photoURL } = params ?? ({} as any);
 
   // ===== State
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [photos, setPhotos] = useState<PhotoDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [paging, setPaging] = useState(0);
+  const [profile, setProfile] = useState<Candidate | null>(null);
+  const [urls, setUrls] = useState<string[]>([]);
+  const [loadingPhotos, setLoadingPhotos] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
-  // ===== Load profile + photos
+  // Ảnh khởi tạo để hiển thị ngay trong khi chờ Firestore
+  const initialUrls = useMemo(() => (photoURL ? [photoURL] : []), [photoURL]);
+
+  // Helper tính tuổi
+  const calcAge = (s?: string) => {
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const [y, m, d] = s.split("-").map(Number);
+    const birth = new Date(y, (m ?? 1) - 1, d ?? 1);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const mDiff = today.getMonth() - birth.getMonth();
+    if (mDiff < 0 || (mDiff === 0 && today.getDate() < birth.getDate())) age--;
+    return age >= 0 ? age : null;
+  };
+
+  // Lắng nghe profile người dùng
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
+    if (!uid) return;
+    const unsub = onSnapshot(
+      doc(db, "users", uid),
+      (snap) => {
+        setProfile((snap.data() as Candidate) ?? null);
+        setLoadingProfile(false);
+      },
+      () => setLoadingProfile(false)
+    );
+    return () => unsub();
+  }, [uid]);
 
-        // user doc
-        const snap = await getDoc(doc(db, "users", targetUid));
-        const data = (snap.data() as UserProfile) || null;
-
-        // photos subcollection
-        const q = query(
-          collection(db, "users", targetUid, "photos"),
-          orderBy("order", "desc")
-        );
-        const ps = await getDocs(q);
-        const list: PhotoDoc[] = [];
-        ps.forEach((d) => {
-          const p = d.data() as PhotoDoc;
-          if (!p?.url) return;
-          list.push(p);
+  // Lắng nghe thư viện ảnh (ẩn ảnh đã xóa)
+  useEffect(() => {
+    if (!uid) return;
+    const q = query(
+      collection(db, "users", uid, "photos"),
+      where("deletedAt", "==", null),
+      orderBy("order", "desc")
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list: string[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as any;
+          if (data?.url) list.push(data.url);
         });
-
-        if (mounted) {
-          setProfile(data);
-          setPhotos(list.length ? list : []);
-          setLoading(false);
-        }
-      } catch (e) {
-        console.error("❌ [CandidateDetails] fetch error:", e);
-        if (mounted) setLoading(false);
+        const merged = initialUrls.length
+          ? Array.from(new Set([...initialUrls, ...list]))
+          : list;
+        setUrls(merged);
+        setLoadingPhotos(false);
+      },
+      () => {
+        setUrls(initialUrls);
+        setLoadingPhotos(false);
       }
-    })();
+    );
+    return () => unsub();
+  }, [uid, initialUrls]);
 
-    return () => {
-      mounted = false;
-    };
-  }, [targetUid]);
+  // ===== Giá trị hiển thị
+  const name = profile?.displayName || "Unknown";
+  const age = calcAge(profile?.birthday);
+  const headerLine = age != null ? `${name}, ${age}` : name;
 
-  // ===== Helpers
-  const calcAge = (birthday?: string | null) => {
-    if (!birthday) return undefined;
-    const m = birthday.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return undefined;
-    const [_, y, mo, d] = m;
-    const dob = new Date(Number(y), Number(mo) - 1, Number(d));
-    const now = new Date();
-    let age = now.getFullYear() - dob.getFullYear();
-    const beforeBirthday =
-      now.getMonth() < dob.getMonth() ||
-      (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate());
-    if (beforeBirthday) age -= 1;
-    return age;
-  };
+  const about = (profile?.bio || "").trim() || "Not provided";
+  const interests = profile?.interests ?? [];
+  const languages = profile?.languages ?? [];
 
-  const age = useMemo(() => calcAge(profile?.birthday), [profile?.birthday]);
+  const location =
+    [profile?.location?.city, profile?.location?.region]
+      .filter(Boolean)
+      .join(", ") || "Not provided";
+  const occupation =
+    profile?.occupation?.title || profile?.occupation?.company
+      ? [profile?.occupation?.title, profile?.occupation?.company]
+          .filter(Boolean)
+          .join(" • ")
+      : "Not provided";
+  const education =
+    (profile?.education?.level &&
+      profile?.education?.level !== "other" &&
+      [profile?.education?.level, profile?.education?.school]
+        .filter(Boolean)
+        .join(" • ")) ||
+    profile?.education?.school ||
+    "Not provided";
+  const gender = profile?.gender || "Not provided";
+  const birthday = profile?.birthday || "Not provided";
 
-  // ===== Action handlers
-  const onLike = async () => {
-    try {
-      const res = await swipeRight(myUid, targetUid);
-      if (res.matched) {
-        Alert.alert(
-          "💞 Match!",
-          "Hai bạn đã thích nhau! Hãy bắt đầu trò chuyện nhé."
-        );
-      } else {
-        Alert.alert("Đã thích", "Bạn đã bày tỏ sự quan tâm.");
-      }
-    } catch (e: any) {
-      Alert.alert("Lỗi", e?.message ?? "Không thể thực hiện like.");
-    }
-  };
-
-  const onNope = async () => {
-    try {
-      await swipeLeft(myUid, targetUid);
-      Alert.alert("Đã ẩn", "Bạn sẽ không thấy hồ sơ này nữa.");
-      navigation.goBack();
-    } catch (e: any) {
-      Alert.alert("Lỗi", e?.message ?? "Không thể ẩn hồ sơ này.");
-    }
-  };
-
-  // ===== UI
-  if (loading) {
+  // ===== Loading khi chưa có gì
+  if ((loadingPhotos || loadingProfile) && !urls.length) {
     return (
-      <View style={[styles.center, { paddingTop: insets.top + 40 }]}>
-        <ActivityIndicator />
-        <Text style={{ marginTop: 10, color: GRAY }}>Đang tải hồ sơ…</Text>
-      </View>
+      <LinearGradient colors={["#B993D6", "#8CA6DB"]} style={{ flex: 1 }}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <TouchableOpacity onPress={() => nav.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.centerFill}>
+          <ActivityIndicator color="#fff" />
+          <Text style={{ color: "#fff", marginTop: 8 }}>Loading…</Text>
+        </View>
+      </LinearGradient>
     );
   }
-
-  if (!profile) {
-    return (
-      <View style={[styles.center, { paddingTop: insets.top + 40 }]}>
-        <Text>Không tìm thấy hồ sơ.</Text>
-      </View>
-    );
-  }
-
-  const displayName = profile.displayName ?? "User";
-  const heroPhotos = photos.length
-    ? photos
-    : profile.photoURL
-    ? [{ id: "main", url: profile.photoURL } as any]
-    : [];
-  const subtitleParts: string[] = [];
-  if (typeof age === "number") subtitleParts.push(String(age));
-  if (profile.gender) subtitleParts.push(profile.gender);
-  const subtitle = subtitleParts.join(" • ");
 
   return (
-    <LinearGradient colors={["#F3E8FF", "#EDE9FE"]} style={{ flex: 1 }}>
+    <LinearGradient colors={["#B993D6", "#8CA6DB"]} style={{ flex: 1 }}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity onPress={() => nav.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
+        bounces={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header in-content */}
-        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={20} color="#4B0082" />
-          </TouchableOpacity>
-          <View style={{ width: 40 }} />
-        </View>
+        {/* Carousel ảnh */}
+        <PhotoCarousel uris={urls} height={460} showIndicators showArrows />
 
-        {/* Photo carousel */}
-        <View>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={(e) => {
-              const p = Math.round(e.nativeEvent.contentOffset.x / width);
-              if (p !== paging) setPaging(p);
-            }}
-            scrollEventThrottle={16}
-          >
-            {heroPhotos.map((p, idx) => (
-              <Image
-                key={p.id ?? idx}
-                source={{ uri: p.url }}
-                style={{ width, height: PHOTO_H }}
-                resizeMode="cover"
-              />
-            ))}
-          </ScrollView>
-
-          {/* Dots */}
-          <View style={styles.dots}>
-            {heroPhotos.map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i === paging && { width: 18, backgroundColor: PURPLE },
-                ]}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* Basic info */}
-        <View style={styles.contentWrap}>
-          <Text style={styles.name}>{displayName}</Text>
-          {!!subtitle && <Text style={styles.sub}>{subtitle}</Text>}
-
-          {/* Occupation */}
-          {profile.occupation?.title ? (
-            <InfoRow
-              icon="briefcase-outline"
-              label="Occupation"
-              value={
-                profile.occupation.company
-                  ? `${profile.occupation.title} @ ${profile.occupation.company}`
-                  : profile.occupation.title
-              }
-            />
-          ) : null}
-
-          {/* Education */}
-          {profile.education?.level && profile.education.level !== "other" ? (
-            <InfoRow
-              icon="school-outline"
-              label="Education"
-              value={
-                profile.education.school
-                  ? `${profile.education.level} • ${profile.education.school}`
-                  : profile.education.level
-              }
-            />
-          ) : null}
-
-          {/* Location */}
-          {profile.location?.city ? (
-            <InfoRow
-              icon="location-outline"
-              label="Location"
-              value={[profile.location.city, profile.location.region]
-                .filter(Boolean)
-                .join(", ")}
-            />
-          ) : null}
-
-          {/* Bio */}
-          {profile.bio ? (
-            <View style={styles.section}>
-              <Text style={styles.secTitle}>About</Text>
-              <Text style={styles.bodyText}>{profile.bio}</Text>
-            </View>
-          ) : null}
-
-          {/* Interests */}
-          {Array.isArray(profile.interests) && profile.interests.length ? (
-            <View style={styles.section}>
-              <Text style={styles.secTitle}>Interests</Text>
-              <View style={styles.chips}>
-                {profile.interests.map((it) => (
-                  <Chip key={it} label={it} />
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {/* Languages */}
-          {Array.isArray(profile.languages) && profile.languages.length ? (
-            <View style={styles.section}>
-              <Text style={styles.secTitle}>Languages</Text>
-              <View style={styles.chips}>
-                {profile.languages.map((lg) => (
-                  <Chip key={lg} label={lg} />
-                ))}
-              </View>
-            </View>
+        {/* Tên + tuổi + vị trí ngắn */}
+        <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+          <Text style={styles.headline}>{headerLine}</Text>
+          {location !== "Not provided" ? (
+            <Text style={styles.subline}>{location}</Text>
           ) : null}
         </View>
+
+        {/* About me */}
+        <SectionCard
+          title="About me"
+          subtitle="Make it easy for others to get a sense of who you are."
+        >
+          <Text style={styles.body}>{about}</Text>
+        </SectionCard>
+
+        {/* My details (giống bố cục ảnh bạn gửi: icon + label + value) */}
+        <SectionCard title="My details">
+          <RowItem icon="person-outline" label="Name" value={name} />
+          <RowItem icon="calendar-outline" label="Birthday" value={birthday} />
+          <RowItem
+            icon="briefcase-outline"
+            label="Occupation"
+            value={occupation}
+          />
+          <RowItem icon="male-female-outline" label="Gender" value={gender} />
+          <RowItem icon="school-outline" label="Education" value={education} />
+          <RowItem
+            icon="location-outline"
+            label="Location"
+            value={location}
+            last
+          />
+        </SectionCard>
+
+        {/* Interests */}
+        <SectionCard title="I enjoy">
+          {interests.length ? (
+            <View style={styles.chipsWrap}>
+              {interests.map((it, i) => (
+                <Chip key={`${it}-${i}`} text={it} />
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.body}>Not provided</Text>
+          )}
+        </SectionCard>
+
+        {/* Languages */}
+        <SectionCard title="Languages">
+          {languages.length ? (
+            <View style={styles.chipsWrap}>
+              {languages.map((lg, i) => (
+                <Chip key={`${lg}-${i}`} text={lg} alt />
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.body}>Not provided</Text>
+          )}
+        </SectionCard>
+
+        <View style={{ height: 24 }} />
       </ScrollView>
-
-      {/* Bottom action bar */}
-      <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
-        <Round bg="#fff" onPress={onNope}>
-          <Ionicons name="close" size={30} color="#F04D78" />
-        </Round>
-        <Round bg={PURPLE} onPress={onLike}>
-          <Ionicons name="heart" size={28} color="#fff" />
-        </Round>
-      </View>
     </LinearGradient>
   );
 };
 
-export default CandidateDetailsScreen;
-
-/* ====== Small UI bits ====== */
-const InfoRow = ({
-  icon,
-  label,
-  value,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value?: string;
-}) => {
-  if (!value) return null;
-  return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoLeft}>
-        <Ionicons name={icon} size={16} color={PURPLE} />
-        <Text style={styles.infoLabel}>{label}</Text>
-      </View>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-};
-
-const Chip: React.FC<{ label: string }> = ({ label }) => (
-  <View style={styles.chip}>
-    <Text style={styles.chipText}>{label}</Text>
-  </View>
-);
-
-const Round: React.FC<{
-  children: React.ReactNode;
-  bg?: string;
-  onPress?: () => void;
-}> = ({ children, bg = "#fff", onPress }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.9}
-    style={[styles.round, { backgroundColor: bg }]}
-  >
-    {children}
-  </TouchableOpacity>
-);
-
-/* ====== Styles ====== */
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-
-  topBar: {
+  // Header
+  header: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
   },
-  iconBtn: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 8,
+  headerTitle: { color: "#fff", fontWeight: "800", fontSize: 18 },
+
+  // Headline dưới ảnh
+  headline: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 24,
+  },
+  subline: { color: "#f0f0ff", marginTop: 2 },
+
+  // Card style (giống ảnh mẫu)
+  card: {
+    backgroundColor: CARD_BG,
+    marginHorizontal: 14,
+    marginTop: 14,
+    borderRadius: 20,
+    padding: 16,
+    // bóng nhẹ
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-
-  dots: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 14,
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 6,
+  cardTitle: {
+    color: TEXT_HEADING,
+    fontWeight: "800",
+    fontSize: 16,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.8)",
+  cardSub: {
+    color: TEXT_MUTE,
+    marginTop: 6,
   },
 
-  contentWrap: {
-    backgroundColor: "#fff",
-    marginTop: -16,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 10,
+  // Body text trong card
+  body: {
+    color: TEXT_BODY,
+    lineHeight: 20,
   },
-  name: { fontSize: 24, fontWeight: "800", color: "#2B2B3D" },
-  sub: { color: GRAY, marginTop: 4 },
 
-  section: {
-    marginTop: 16,
-    backgroundColor: BG_SOFT,
-    borderRadius: 14,
-    padding: 12,
-  },
-  secTitle: { fontWeight: "800", color: "#2B2B3D", marginBottom: 6 },
-  bodyText: { color: "#333", lineHeight: 20 },
-
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 12,
-    gap: 8,
-  },
-  infoLeft: {
+  // Rows trong "My details"
+  row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 2,
+    paddingVertical: 12,
+    gap: 10,
   },
-  infoLabel: { fontWeight: "700", color: "#2B2B3D" },
-  infoValue: { marginLeft: "auto", color: "#333", maxWidth: "65%" },
+  rowDivider: {
+    borderBottomColor: "rgba(0,0,0,0.06)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  rowIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: "#F1EDFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowLabel: {
+    color: TEXT_HEADING,
+    fontWeight: "700",
+    flex: 0,
+    minWidth: 88,
+  },
+  rowValue: {
+    color: TEXT_BODY,
+    flex: 1,
+    textAlign: "right",
+  },
 
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  // Chips
+  chipsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
   chip: {
     backgroundColor: "#fff",
-    borderColor: "#E2E6F0",
+    borderColor: "#D4D7E2",
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
   },
-  chipText: { color: "#333", fontWeight: "600" },
+  chipAlt: {
+    backgroundColor: "#fff",
+  },
+  chipText: {
+    color: TEXT_BODY,
+    fontWeight: "600",
+  },
 
-  actions: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingTop: 8,
-    paddingHorizontal: 28,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "transparent",
-  },
-  round: {
-    width: 72,
-    height: 72,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
-  },
+  centerFill: { flex: 1, alignItems: "center", justifyContent: "center" },
 });
+
+export default CandidateDetailsScreen;
