@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { View, Text, StyleSheet, Animated, PanResponder } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -60,6 +66,7 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
   // ===== Swipe engine
   const pan = useRef(new Animated.ValueXY()).current;
   const [history, setHistory] = useState<Candidate[]>([]);
+  const isAnimating = useRef(false); // Ngăn chặn việc kéo nhiều lần khi animation đang chạy
 
   const rotate = pan.x.interpolate({
     inputRange: [-150, 0, 150],
@@ -79,6 +86,70 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
   const topCard = cards[0];
   const nextCard = cards[1];
 
+  /**
+   * Sử dụng forceSwipe dưới dạng useCallback để không bị xung đột và ổn định.
+   */
+  const forceSwipe = useCallback(
+    (dir: "left" | "right") => {
+      //Nếu không có card hoặc animation đang chạy, không làm gì cả (để tránh xung đột)
+      if (!topCard || isAnimating.current) return;
+
+      isAnimating.current = true;
+
+      Animated.timing(pan, {
+        toValue: { x: dir === "right" ? 1000 : -1000, y: 0 },
+        duration: 180,
+        useNativeDriver: false,
+      }).start(() => {
+        (async () => {
+          const swiped = topCard;
+          // Reset lại animation cho card phía sau
+          pan.setValue({ x: 0, y: 0 });
+
+          // Cập nhật nội bộ (các useState)
+          setHistory((h) => [swiped, ...h]);
+          setCards((c) => c.slice(1));
+
+          try {
+            if (dir === "right") {
+              const res = await swipeRight(uid, swiped.uid);
+              if (res.matched) {
+                setMatchModal({
+                  visible: true,
+                  me: {
+                    uid: profile?.uid ?? uid,
+                    displayName: profile?.displayName ?? "You",
+                    photoURL: profile?.photoURL ?? null,
+                    birthday: profile?.birthday ?? null,
+                    bio: profile?.bio,
+                    occupation: profile?.occupation,
+                    gender: profile?.gender,
+                    age: undefined,
+                  },
+                  them: swiped,
+                });
+              }
+            } else {
+              await swipeLeft(uid, swiped.uid);
+            }
+          } catch (err) {
+            console.error("❌ [forceSwipe] Swipe error:", err);
+            //Nếu bị lỗi, trả thẻ đó trở lại (roll back thẻ lại)
+            setCards((c) => [swiped, ...c]);
+          } finally {
+            //Xác nhận animation chạy xong, để cho phép chạy các animation của các card khác
+            isAnimating.current = false;
+          }
+        })();
+      });
+    },
+
+    [pan, topCard, uid, profile]
+  );
+
+  /**
+   * PanResponder: phát hiện người dùng kéo, lướt và thả ngón tay
+   */
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -88,11 +159,24 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
           useNativeDriver: false,
         }),
         onPanResponderRelease: (_, g) => {
-          if (g.dx > 120) {
+          //Hằng số swipeThreshold là độ xa người dùng kéo thẻ. Nếu người dùng kéo vượt quá swipeThreshold thì sẽ thực thi chức năng.
+          //Nếu nhỏ hơn swipeThreshold thì card sẽ bị snap back lại
+          const swipeThreshold = 120;
+          if (isAnimating.current) {
+            // Nếu animation đang chạy thì snap back
+            Animated.spring(pan, {
+              toValue: { x: 0, y: 0 },
+              useNativeDriver: false,
+            }).start();
+            return;
+          }
+
+          if (g.dx > swipeThreshold) {
             forceSwipe("right");
-          } else if (g.dx < -120) {
+          } else if (g.dx < -swipeThreshold) {
             forceSwipe("left");
           } else {
+            //Không đủ xa, card bị snap back lại
             Animated.spring(pan, {
               toValue: { x: 0, y: 0 },
               useNativeDriver: false,
@@ -100,49 +184,8 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
           }
         },
       }),
-    []
+    [pan, forceSwipe]
   );
-
-  const forceSwipe = (dir: "left" | "right") => {
-    Animated.timing(pan, {
-      toValue: { x: dir === "right" ? 1000 : -1000, y: 0 },
-      duration: 180,
-      useNativeDriver: false,
-    }).start(async () => {
-      const swiped = topCard;
-      pan.setValue({ x: 0, y: 0 });
-      if (!swiped) return;
-
-      setHistory((h) => [swiped, ...h]);
-      setCards((c) => c.slice(1));
-
-      try {
-        if (dir === "right") {
-          const res = await swipeRight(uid, swiped.uid);
-          if (res.matched) {
-            setMatchModal({
-              visible: true,
-              me: {
-                uid: profile?.uid ?? uid,
-                displayName: profile?.displayName ?? "You",
-                photoURL: profile?.photoURL ?? null,
-                birthday: profile?.birthday ?? null,
-                bio: profile?.bio,
-                occupation: profile?.occupation,
-                gender: profile?.gender,
-                age: undefined,
-              },
-              them: swiped,
-            });
-          }
-        } else {
-          await swipeLeft(uid, swiped.uid);
-        }
-      } catch (err) {
-        console.error("❌ [forceSwipe] Swipe error:", err);
-      }
-    });
-  };
 
   // ===== UI
   return (
@@ -222,10 +265,18 @@ export const SwipeFeedScreen = ({ navigation }: Props) => {
 
       {/* Bottom actions */}
       <View style={[styles.actions, { paddingBottom: insets.bottom + 20 }]}>
-        <RoundButton onPress={() => forceSwipe("left")} bg="#fff">
+        <RoundButton
+          onPress={() => forceSwipe("left")}
+          bg="#fff"
+          // disabled={!topCard || isAnimating.current}
+        >
           <Ionicons name="close" size={30} color="#F04D78" />
         </RoundButton>
-        <RoundButton onPress={() => forceSwipe("right")} bg={PURPLE_DARK}>
+        <RoundButton
+          onPress={() => forceSwipe("right")}
+          bg={PURPLE_DARK}
+          // disabled={!topCard || isAnimating.current}
+        >
           <Ionicons name="heart" size={28} color="#fff" />
         </RoundButton>
       </View>
