@@ -6,6 +6,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Alert,
+  ToastAndroid,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -35,15 +36,33 @@ export const SignInScreen = (_: Props) => {
           throw new Error("Username 3–20 ký tự, a-z 0-9 . _ -");
         }
         await register(uname, email.trim().toLowerCase(), password);
-        Alert.alert("Thành công", "🎉 Đăng ký thành công!");
+        ToastAndroid.showWithGravity(
+          "Đăng ký thành công! 🎉",
+          ToastAndroid.SHORT,
+          ToastAndroid.BOTTOM
+        );
       } else {
         await login(email.trim().toLowerCase(), password);
-        Alert.alert("Thành công", "✅ Đăng nhập thành công!");
+        ToastAndroid.showWithGravity(
+          "Đăng nhập thành công! ✅",
+          ToastAndroid.SHORT,
+          ToastAndroid.BOTTOM
+        );
       }
     } catch (e: any) {
-      Alert.alert(
+      // Alert.alert(
+      //   isRegister ? "Đăng ký thất bại" : "Đăng nhập thất bại",
+      //   e?.message ?? String(e)
+      // );
+      console.log(
         isRegister ? "Đăng ký thất bại" : "Đăng nhập thất bại",
+        ", error: ",
         e?.message ?? String(e)
+      );
+      ToastAndroid.showWithGravity(
+        "Sai mật khẩu hoặc tên đăng nhập. Vui lòng thử lại",
+        ToastAndroid.SHORT,
+        ToastAndroid.BOTTOM
       );
     } finally {
       setSubmitting(false);
