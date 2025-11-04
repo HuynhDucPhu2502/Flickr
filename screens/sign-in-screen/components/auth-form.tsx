@@ -1,6 +1,7 @@
-import React from "react";
-import { View, StyleSheet, TextInput } from "react-native";
+import React, { useState } from "react";
+import { View, StyleSheet, TextInput, TouchableOpacity } from "react-native";
 import { Text, Button } from "react-native-paper";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 interface AuthFormProps {
   username: string;
@@ -27,6 +28,8 @@ export const AuthForm = ({
   onToggleMode,
   loading,
 }: AuthFormProps) => {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <View style={styles.form}>
       <Text style={styles.title}>{isRegister ? "Đăng ký" : "Đăng nhập"}</Text>
@@ -54,16 +57,29 @@ export const AuthForm = ({
         returnKeyType="next"
       />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Mật khẩu"
-        placeholderTextColor="#ddd"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        returnKeyType="done"
-        onSubmitEditing={onSubmit}
-      />
+      <View style={styles.passwordContainer}>
+        <TextInput
+          style={[styles.input, { flex: 1, marginBottom: 0 }]}
+          placeholder="Mật khẩu"
+          placeholderTextColor="#ddd"
+          secureTextEntry={!showPassword}
+          value={password}
+          onChangeText={setPassword}
+          returnKeyType="done"
+          onSubmitEditing={onSubmit}
+        />
+        <TouchableOpacity
+          onPress={() => setShowPassword(!showPassword)}
+          style={styles.eyeIcon}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MaterialCommunityIcons
+            name={showPassword ? "eye-off-outline" : "eye-outline"}
+            size={22}
+            color="#fff"
+          />
+        </TouchableOpacity>
+      </View>
 
       <Button
         mode="contained"
@@ -103,8 +119,23 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     fontSize: 16,
+    marginBottom: 8,
   },
-  btn: { borderRadius: 12, height: 52, justifyContent: "center", marginTop: 4 },
+  passwordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    position: "relative",
+  },
+  eyeIcon: {
+    position: "absolute",
+    right: 15,
+  },
+  btn: {
+    borderRadius: 12,
+    height: 52,
+    justifyContent: "center",
+    marginTop: 4,
+  },
   btnText: { fontSize: 16, fontWeight: "600" },
   switchText: {
     color: "#fff",
