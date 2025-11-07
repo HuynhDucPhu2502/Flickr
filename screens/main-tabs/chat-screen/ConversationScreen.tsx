@@ -1,4 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+"use client";
+
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -15,7 +18,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
+import {
+  type RouteProp,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
   addDoc,
   collection,
@@ -29,9 +37,10 @@ import {
 } from "firebase/firestore";
 import { db } from "../../../FirebaseConfig";
 import { useAuth } from "../../../contexts/auth";
-import { ChatStackParamList } from ".";
+import type { ChatStackParamList } from ".";
 
 type RouteProps = RouteProp<ChatStackParamList, "Conversation">;
+type NavProps = NativeStackNavigationProp<ChatStackParamList, "Conversation">;
 
 type ChatMessage = {
   id: string;
@@ -41,20 +50,17 @@ type ChatMessage = {
   type?: "text";
 };
 
-// Ảnh fallback local
 const AVATAR_FALLBACK = require("../../../assets/blank_user_img.png");
 
-// Gradient nền
 const BG_GRADIENT = ["#0E0C1F", "#1A1040", "#2A145A"] as const;
 
-// Kiểu nguồn ảnh hợp lệ cho <Image />
 type ImgSource = { uri: string } | number;
 const toImgSource = (v?: string | number | null): ImgSource =>
   typeof v === "number" ? v : v ? { uri: v } : AVATAR_FALLBACK;
 
 const ConversationScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const nav = useNavigation();
+  const nav = useNavigation<NavProps>();
   const { user } = useAuth();
   const me = user?.uid!;
   const { params } = useRoute<RouteProps>();
@@ -64,7 +70,6 @@ const ConversationScreen: React.FC = () => {
   const [text, setText] = useState("");
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
 
-  // Avatar header: remote -> fallback local khi lỗi tải
   const [peerImgErr, setPeerImgErr] = useState(false);
   const peerAvatarSrc: ImgSource = peerImgErr
     ? AVATAR_FALLBACK
@@ -74,7 +79,6 @@ const ConversationScreen: React.FC = () => {
       ? (peerAvatarSrc as any).uri
       : "local-peer";
 
-  // Helpers time
   const toDate = (ts: any): Date | null => {
     if (!ts) return null;
     if (typeof ts.toDate === "function") return ts.toDate();
@@ -96,24 +100,23 @@ const ConversationScreen: React.FC = () => {
     );
   };
 
+  const handleCallPress = () => {
+    if (!chatId || !peer) {
+      console.warn("[Conversation] Missing chatId or peer for call");
+      return;
+    }
+    nav.navigate("VoiceCall", { chatId, peer });
+  };
+
   useEffect(() => {
     console.log("[Conversation] mounted with chatId:", chatId, "peer:", peer);
   }, [chatId]);
 
-  if (!chatId) {
-    return (
-      <LinearGradient colors={BG_GRADIENT} style={{ flex: 1 }}>
-        <View
-          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
-        >
-          <Text style={{ color: "#fff" }}>Missing chatId</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  // ===== Realtime
   useEffect(() => {
+    if (!chatId) {
+      console.log("[Conversation] Missing chatId");
+      return;
+    }
     console.log("[Conversation] subscribe messages:", chatId);
     const q = query(
       collection(db, "chats", chatId, "messages"),
@@ -137,7 +140,6 @@ const ConversationScreen: React.FC = () => {
     };
   }, [chatId]);
 
-  // ===== Send
   const send = async () => {
     const content = text.trim();
     if (!content) return;
@@ -168,7 +170,6 @@ const ConversationScreen: React.FC = () => {
     }
   };
 
-  // ===== Grouping / separators
   const getNextItem = (index: number) => msgs[index + 1];
   const shouldShowAvatar = (item: ChatMessage, next?: ChatMessage) => {
     if (item.senderId === me) return false;
@@ -298,7 +299,7 @@ const ConversationScreen: React.FC = () => {
         </View>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => {}}>
+          <TouchableOpacity style={styles.headerBtn} onPress={handleCallPress}>
             <Ionicons name="call-outline" size={26} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerBtn} onPress={() => {}}>
